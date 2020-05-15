@@ -1,6 +1,6 @@
 use crate::errors::{Error, Result};
 use crate::v2::*;
-use bytes::Bytes;
+use bytes::{BufMut, BytesMut};
 use reqwest;
 use reqwest::{Method, StatusCode};
 
@@ -34,7 +34,7 @@ impl Client {
         &self,
         name: &str,
         digest: &str,
-        bytes_container: &mut Bytes,
+        bytes_container: &mut BytesMut,
     ) -> Result<()> {
         let digest = ContentDigest::try_new(digest.to_string())?;
 
@@ -42,7 +42,7 @@ impl Client {
         let url = reqwest::Url::parse(&ep)
             .map_err(|e| Error::from(format!("failed to parse url from string: {}", e)))?;
 
-        let res = self.build_reqwest(Method::GET, url.clone()).send().await?;
+        let mut res = self.build_reqwest(Method::GET, url.clone()).send().await?;
 
         trace!("GET {} status: {}", res.url(), res.status());
         let status = res.status();
@@ -58,7 +58,10 @@ impl Client {
         }
 
         let status = res.status();
-        *bytes_container = res.bytes().await?;
+        while let Some(chunk) = res.chunk().await? {
+            bytes_container.put(chunk);
+        }
+        // *bytes_container = res.bytes().await?;
         let len = bytes_container.len();
 
         if status.is_success() {
@@ -87,10 +90,10 @@ impl Client {
 
     /// Retrieve blob.
     pub async fn get_blob(&self, name: &str, digest: &str) -> Result<Vec<u8>> {
-        let mut body_vec = Bytes::new();
-        match self.get_blob_ref(name, digest, &mut body_vec).await {
+        let mut buf = BytesMut::with_capacity(0);
+        match self.get_blob_ref(name, digest, &mut buf).await {
             Err(e) => Err(e),
-            Ok(_) => Ok(body_vec.to_vec()),
+            Ok(_) => Ok(buf.to_vec()),
         }
     }
 }
