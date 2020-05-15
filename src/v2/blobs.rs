@@ -63,7 +63,7 @@ impl Client {
 
         if status.is_success() {
             trace!("Successfully received blob with {} bytes ", len);
-            digest.try_verify(bytes_container)?;
+            // digest.try_verify(bytes_container)?;
             return Ok(());
         } else if status.is_client_error() {
             return Err(Error::from(format!(
